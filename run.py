@@ -15,11 +15,21 @@ with open("asns.json", "r") as f:
     asns = json.load(f)
 
 def get_prefixes_for_asn(asn):
-    url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource={asn}&starttime=2020-12-12T12:00"
+    url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource={asn}"
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
-        return [prefix['prefix'] for prefix in data['data']['prefixes']]
+        prefixes = data['data']['prefixes']
+        
+        # Count total prefixes
+        total_prefixes = len(prefixes)
+        print(f"ASN {asn} has {total_prefixes} prefixes.")
+        # Return empty array if more than 10,000 prefixes
+        if total_prefixes > 10000:
+            print(f"⚠️ ASN {asn} has too many prefixes (>10,000). Skipping...")
+            return []
+        
+        return [prefix['prefix'] for prefix in prefixes]
     else:
         print(f"Failed to get prefixes for ASN {asn}")
         return []
@@ -63,9 +73,7 @@ for asn_info in asns:
     print(f"\nProcessing ASN: {name} (ASN {asn})")
     prefixes = get_prefixes_for_asn(asn)
     for prefix in prefixes:
-        print(prefix)
         ips = extract_ips_from_prefix(prefix)
-        print(len(ips))
         for ip in ips:
             try:
                 result = torrents_for_ip(ip)
