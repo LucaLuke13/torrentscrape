@@ -15,24 +15,47 @@ with open("asns.json", "r") as f:
     asns = json.load(f)
 
 def get_prefixes_for_asn(asn):
-    url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource={asn}"
+    url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource={asn}&starttime=2020-12-12T12:00"
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
         prefixes = data['data']['prefixes']
         
-        # Count total prefixes
-        total_prefixes = len(prefixes)
-        print(f"ASN {asn} has {total_prefixes} prefixes.")
-        # Return empty array if more than 10,000 prefixes
-        if total_prefixes > 10000:
-            print(f"⚠️ ASN {asn} has too many prefixes (>10,000). Skipping...")
-            return []
+        total_ips = 0
+        valid_prefixes = []
         
-        return [prefix['prefix'] for prefix in prefixes]
+        for prefix_data in prefixes:
+            prefix = prefix_data['prefix']
+            try:
+                network = ipaddress.ip_network(prefix, strict=False)
+                
+                # Skip IPv6 prefixes
+                if isinstance(network, ipaddress.IPv6Network):
+                    continue
+                
+                # Count usable IPs for IPv4 (exclude network & broadcast addresses)
+                num_ips = network.num_addresses - 2 if network.version == 4 and network.num_addresses > 2 else network.num_addresses
+                
+                total_ips += num_ips
+                
+                # Stop processing if IP limit exceeds 10,000
+                if total_ips > 10000:
+                    print(f"⚠️ ASN {asn} exceeds 10,000 IPs. Skipping...")
+                    return []
+                
+                valid_prefixes.append(prefix)
+            
+            except ValueError:
+                print(f"Invalid prefix: {prefix}")
+                continue
+        
+        print(f"ASN {asn} has {total_ips} IPs across {len(valid_prefixes)} prefixes.")
+        return valid_prefixes
+    
     else:
         print(f"Failed to get prefixes for ASN {asn}")
         return []
+
 
 def extract_ips_from_prefix(prefix):
     try:
