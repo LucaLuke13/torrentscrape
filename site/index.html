@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torrent Activity Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .filter-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filter-section h2 {
+            margin-top: 0;
+        }
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .filter-group {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .filter-group h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .filter-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .filter-group input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .result-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .result-card h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+        }
+        .result-card .info {
+            display: grid;
+            gap: 8px;
+        }
+        .result-card .info div {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+        }
+        .result-card .info div span:first-child {
+            color: #666;
+            font-weight: bold;
+        }
+        .result-card .info div span:last-child {
+            color: #333;
+        }
+        .result-card .contents {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .result-card .contents h4 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .result-card .contents .content-item {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        .result-card .contents .content-item h5 {
+            margin: 0 0 5px 0;
+            color: #2c3e50;
+        }
+        .result-card .contents .content-item .details {
+            font-size: 0.9em;
+            color: #666;
+        }
+        #map {
+            height: 400px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .map-popup {
+            padding: 10px;
+        }
+        .map-popup h4 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .map-popup .content-list {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        .map-popup .content-item {
+            margin-bottom: 8px;
+            padding: 5px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Torrent Activity Monitor</h1>
+        </div>
+        
+        <div class="filter-section">
+            <h2>Filters</h2>
+            <div class="filters">
+                <div class="filter-group">
+                    <h3>Country</h3>
+                    <select id="countryFilter">
+                        <option value="">All Countries</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <h3>ISP</h3>
+                    <select id="ispFilter">
+                        <option value="">All ISPs</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <h3>Content Type</h3>
+                    <select id="contentTypeFilter">
+                        <option value="">All Types</option>
+                        <option value="Movies">Movies</option>
+                        <option value="Music">Music</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <h3>Explicit Content</h3>
+                    <select id="explicitFilter">
+                        <option value="all">All Content</option>
+                        <option value="explicit">Explicit Only</option>
+                        <option value="clean">Clean Only</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <h3>Date Range</h3>
+                    <input type="date" id="dateFrom">
+                    <input type="date" id="dateTo">
+                </div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+        <div class="results" id="resultsContainer">
+            <!-- Results will be populated here -->
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Load data from JSON file
+        async function loadData() {
+            try {
+                const response = await fetch('./data.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                return []; // Return empty array if loading fails
+            }
+        }
+
+        // Initialize filters
+        async function initializeFilters(data) {
+            // Country filter
+            const countries = [...new Set(data
+                .filter(item => item?.geoData?.country) // Filter out undefined values
+                .map(item => item.geoData.country)
+            )];
+            const countryFilter = document.getElementById('countryFilter');
+            countries.forEach(country => {
+                const option = document.createElement('option');
+                option.value = country;
+                option.textContent = country;
+                countryFilter.appendChild(option);
+            });
+
+            // ISP filter
+            const isps = [...new Set(data
+                .filter(item => item?.isp) // Filter out undefined values
+                .map(item => item.isp)
+            )];
+            const ispFilter = document.getElementById('ispFilter');
+            isps.forEach(isp => {
+                const option = document.createElement('option');
+                option.value = isp;
+                option.textContent = isp;
+                ispFilter.appendChild(option);
+            });
+        }
+
+        // Initialize map
+        let map;
+        let markers = new Map();
+        function initializeMap() {
+            map = L.map('map').setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Add marker to map
+        function addMarker(item) {
+            const { latitude, longitude } = item.geoData;
+            if (!latitude || !longitude) return;
+
+            const marker = L.marker([latitude, longitude])
+                .bindPopup(`
+                    <div class="map-popup">
+                        <h4>${item.ip}</h4>
+                        <div class="content-list">
+                            ${item.contents?.map(content => `
+                                <div class="content-item">
+                                    <strong>${content.name}</strong>
+                                    <div>Category: ${content.category}</div>
+                                    <div>Date: ${new Date(content.startDate).toLocaleString()}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `);
+
+            markers.set(item.ip, marker);
+            marker.addTo(map);
+        }
+
+        // Update map view
+        function updateMapView(data) {
+            // Clear existing markers
+            markers.forEach(marker => marker.remove());
+            markers.clear();
+
+            // Add new markers
+            data.forEach(item => addMarker(item));
+
+            // Fit bounds if there are markers
+            if (markers.size > 0) {
+                const markerList = Array.from(markers.values());
+                if (markerList.length > 0) {
+                    map.fitBounds(markerList.map(marker => marker.getLatLng()));
+                }
+            }
+        }
+
+        // Filter data
+        function filterData(data, filters) {
+            const { country, isp, contentType, explicit, dateFrom, dateTo } = filters;
+
+            return data.filter(item => {
+                // First filter for items with contents
+                if (!item?.contents?.length) return false;
+
+                let matches = true;
+
+                if (country && item?.geoData?.country !== country) matches = false;
+                if (isp && item?.isp !== isp) matches = false;
+                if (contentType) {
+                    const hasContentType = item?.contents?.some(content => 
+                        content?.category === contentType
+                    );
+                    if (!hasContentType) matches = false;
+                }
+                if (explicit) {
+                    if (explicit === 'explicit') {
+                        if (!item.hasPorno && !item.hasChildPorno) matches = false;
+                    } else if (explicit === 'clean') {
+                        if (item.hasPorno || item.hasChildPorno) matches = false;
+                    }
+                }
+                if (dateFrom || dateTo) {
+                    const datesMatch = item?.contents?.every(content => {
+                        const date = new Date(content?.startDate);
+                        const from = dateFrom ? new Date(dateFrom) : null;
+                        const to = dateTo ? new Date(dateTo) : null;
+                        return (!from || date >= from) && (!to || date <= to);
+                    });
+                    if (!datesMatch) matches = false;
+                }
+
+                return matches;
+            });
+        }
+
+        // Render results
+        function renderResults(data) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            data.forEach(item => {
+                if (!item) return; // Skip undefined items
+
+                const card = document.createElement('div');
+                card.className = 'result-card';
+
+                card.innerHTML = `
+                    <h3>${item.ip || 'Unknown IP'}</h3>
+                    <div class="info">
+                        <div>
+                            <span>ISP:</span>
+                            <span>${item.isp || 'Unknown ISP'}</span>
+                        </div>
+                        <div>
+                            <span>Country:</span>
+                            <span>${item.geoData?.country || 'Unknown Country'}</span>
+                        </div>
+                        <div>
+                            <span>City:</span>
+                            <span>${item.geoData?.city || 'Unknown City'}</span>
+                        </div>
+                        <div>
+                            <span>Coordinates:</span>
+                            <span>${item.geoData?.latitude || '0'}, ${item.geoData?.longitude || '0'}</span>
+                        </div>
+                    </div>
+                    <div class="contents">
+                        <h4>Contents (${item.contents?.length || 0})</h4>
+                        ${item.contents?.map(content => `
+                            <div class="content-item">
+                                <h5>${content?.name || 'Unknown Content'}</h5>
+                                <div class="details">
+                                    <div>Category: ${content?.category || 'Unknown Category'}</div>
+                                    <div>Date: ${content?.startDate ? new Date(content.startDate).toLocaleString() : 'Unknown Date'}</div>
+                                    <div>Size: ${content?.torrent?.size ? (content.torrent.size / (1024 * 1024)).toFixed(2) : '0'} MB</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // Event listeners
+        document.querySelectorAll('#countryFilter, #ispFilter, #contentTypeFilter, #explicitFilter, #dateFrom, #dateTo').forEach(filter => {
+            filter.addEventListener('change', () => {
+                const filters = {
+                    country: document.getElementById('countryFilter').value,
+                    isp: document.getElementById('ispFilter').value,
+                    contentType: document.getElementById('contentTypeFilter').value,
+                    explicit: document.getElementById('explicitFilter').value,
+                    dateFrom: document.getElementById('dateFrom').value,
+                    dateTo: document.getElementById('dateTo').value
+                };
+                const filteredData = filterData(data, filters);
+                renderResults(filteredData);
+                updateMapView(filteredData);
+            });
+        });
+
+        // Initialize application
+        let data = [];
+        async function init() {
+            try {
+                data = await loadData();
+                initializeFilters(data);
+                initializeMap();
+                renderResults(data);
+                updateMapView(data);
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                renderResults([]); // Render empty results on error
+            }
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
